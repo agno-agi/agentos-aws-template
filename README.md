@@ -1,37 +1,29 @@
-# Agent OS Template
+# Agent OS AWS Template
 
-Welcome to Agent OS AWS: a robust, production-ready application for serving Agentic Applications as an API on AWS. It includes:
-
-- An **AgentOS instance**: An API-based interface for production-ready Agentic Applications.
-- A **PostgreSQL database** for storing Agent sessions, knowledge, and memories.
+Run agents, teams, and workflows as a production-ready API. Develop on Docker, deploy to AWS.
 
 ## Quickstart
 
-Follow these steps to get your Agent OS up and running:
+### Prerequisites
 
-> [Get Docker Desktop](https://www.docker.com/products/docker-desktop) should be installed and running.
-> [Get OpenAI API key](https://platform.openai.com/api-keys)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop) installed and running
+- [OpenAI API key](https://platform.openai.com/api-keys)
 
-### Clone the repo
-
-```sh
-git clone https://github.com/agno-agi/agentos-aws-template.git
-cd agentos-aws-template
-```
-
-### Configure API keys
-
-We use GPT 5 Mini as the default model, please export the `OPENAI_API_KEY` environment variable to get started.
+### Clone and configure
 
 ```sh
-export OPENAI_API_KEY="YOUR_API_KEY_HERE"
+git clone https://github.com/agno-agi/agentos-aws-template.git agentos-aws
+cd agentos-aws
+
+cp example.env .env
+# Add OPENAI_API_KEY to .env
 ```
 
-> **Note**: You can use any model provider, just update the agents in the `/agents` folder and add the required libraries to the `pyproject.toml` and `requirements.txt` files.
+> Agno works with any model provider. Update the agents in `/agents` and add dependencies to `pyproject.toml`.
 
 ### Start the application
 
-This examples includes 2 environments, `dev` and `prd`.
+This template supports 2 environments, `dev` and `prd`.
 
 ### Run the application locally in docker:
 
@@ -44,23 +36,13 @@ This command starts:
 - The **AgentOS instance**, which is a FastAPI server, running on [http://localhost:8080](http://localhost:8080).
 - The **PostgreSQL database**, accessible on `localhost:5432`.
 
-Once started, you can:
+Open http://localhost:8000/docs to see the API.
 
-- Test the API at [http://localhost:8080/docs](http://localhost:8080/docs).
+### Connect to the control plane
 
-### Connect to AgentOS UI
-
-- Open the [Agno AgentOS UI](https://os.agno.com).
-- Connect your OS with `http://localhost:8080` as the endpoint. You can name it `AgentOS` (or any name you prefer).
-- Explore all the features of AgentOS or go straight to the Chat page to interact with your Agents.
-
-### How to load the knowledge base locally
-
-To load the knowledge base, you can use the following command:
-
-```sh
-docker exec -it agentos-aws-template-api python -m agents.knowledge_agent
-```
+1. Open [os.agno.com](https://os.agno.com)
+2. Click "Add OS" and select "Local"
+3. Enter `http://localhost:8000`
 
 ### Stop the application
 
@@ -90,10 +72,37 @@ ag infra up --env prd
 - AWS ECS Task
 - AWS ECS Task Definition
 
-### How to load the knowledge base in AWS
+### Connect to the control plane
 
-Your ECS tasks are already enabled with SSH access. SSH into the production containers using:
+1. In order to connect your load balancer to the Control plane, you need to make sure its HTTPS. Read more [here](https://docs.agno.com/production/aws/domain-https)
+1. Open [os.agno.com](https://os.agno.com)
+2. Click "Add OS" and select "Live"
+3. Enter the domain of your load balancer
 
+## Project Structure
+
+```
+agentos-aws/
+├── agents/              # Your agents
+├── app/                 # AgentOS entry point
+├── db/                  # Database connection
+├── scripts/             # Helper scripts
+├── infra/               # Infrastructure configuration
+├── Dockerfile           # Container build
+├── example.env          # Example environment variables
+└── pyproject.toml       # Python dependencies
+```
+
+## Common Tasks
+
+### Load a knowledge base
+
+Locally:
+```sh
+docker exec -it agentos-aws-template-api python -m agents.knowledge_agent
+```
+
+On AWS:
 ```sh
 ECS_CLUSTER=agentos-aws-template-prd-cluster
 TASK_ARN=$(aws ecs list-tasks --cluster agentos-aws-template-prd-cluster --query "taskArns[0]" --output text)
@@ -112,64 +121,46 @@ After SSHing into the container, run the following command to load the knowledge
 python -m agents.knowledge_agent
 ```
 
-Note: Please update the ECS cluster and the container name to match your prd resources.
+### View logs
+```sh
+docker compose logs -f
+```
 
-## Development Setup
+### Restart after code changes
+```sh
+docker compose restart
+```
 
-To setup your local virtual environment:
+## Local Development
 
-### Install `uv`
+For development without Docker:
 
-We use `uv` for python environment and package management. Install it by following the the [`uv` documentation](https://docs.astral.sh/uv/#getting-started) or use the command below for unix-like systems:
-
+### Install uv
 ```sh
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-### Create Virtual Environment & Install Dependencies
-
-Run the `dev_setup.sh` script. This will create a virtual environment and install project dependencies:
-
+### Setup environment
 ```sh
-./scripts/dev_setup.sh
-```
-
-### Activate Virtual Environment
-
-Activate the created virtual environment:
-
-```sh
+./scripts/venv_setup.sh
 source .venv/bin/activate
 ```
 
-(On Windows, the command might differ, e.g., `.venv\Scripts\activate`)
+### Add dependencies
 
-## Managing Python Dependencies
-
-If you need to add or update python dependencies:
-
-### Modify pyproject.toml
-
-Add or update your desired Python package dependencies in the `[dependencies]` section of the `pyproject.toml` file.
-
-### Generate requirements.txt
-
-The `requirements.txt` file is used to build the application image. After modifying `pyproject.toml`, regenerate `requirements.txt` using:
-
+1. Edit `pyproject.toml`
+2. Regenerate requirements:
 ```sh
 ./scripts/generate_requirements.sh
 ```
-
-To upgrade all existing dependencies to their latest compatible versions, run:
-
+3. Rebuild:
 ```sh
-./scripts/generate_requirements.sh upgrade
+docker compose up -d --build
 ```
 
-### Rebuild Docker Images
+## Learn More
 
-Rebuild your Docker images to include the updated dependencies, set build_images to true in the `infra/settings.py` file and run the following command:
-
-```sh
-ag infra up -f
-```
+- [Managing AWS Resources](https://docs.agno.com/production/aws/production-app)
+- [Agno Documentation](https://docs.agno.com)
+- [AgentOS Documentation](https://docs.agno.com/agent-os)
+- [Discord Community](https://agno.link/discord)
