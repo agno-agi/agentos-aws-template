@@ -41,17 +41,17 @@ ag infra up --env dev
 
 This command starts:
 
-- The **AgentOS instance**, which is a FastAPI server, running on [http://localhost:8000](http://localhost:8000).
+- The **AgentOS instance**, which is a FastAPI server, running on [http://localhost:8080](http://localhost:8080).
 - The **PostgreSQL database**, accessible on `localhost:5432`.
 
 Once started, you can:
 
-- Test the API at [http://localhost:8000/docs](http://localhost:8000/docs).
+- Test the API at [http://localhost:8080/docs](http://localhost:8080/docs).
 
 ### Connect to AgentOS UI
 
 - Open the [Agno AgentOS UI](https://os.agno.com).
-- Connect your OS with `http://localhost:8000` as the endpoint. You can name it `AgentOS` (or any name you prefer).
+- Connect your OS with `http://localhost:8080` as the endpoint. You can name it `AgentOS` (or any name you prefer).
 - Explore all the features of AgentOS or go straight to the Chat page to interact with your Agents.
 
 ### How to load the knowledge base locally
@@ -59,7 +59,7 @@ Once started, you can:
 To load the knowledge base, you can use the following command:
 
 ```sh
-docker exec -it agent-infra-aws-agentos python -m agents.knowledge_agent
+docker exec -it agentos-aws-template-api python -m agents.knowledge_agent
 ```
 
 ### Stop the application
@@ -97,7 +97,7 @@ Your ECS tasks are already enabled with SSH access. SSH into the production cont
 ```sh
 ECS_CLUSTER=agentos-aws-template-prd-cluster
 TASK_ARN=$(aws ecs list-tasks --cluster agentos-aws-template-prd-cluster --query "taskArns[0]" --output text)
-CONTAINER_NAME=agent-infra-aws-agentos
+CONTAINER_NAME=agentos-aws-template
 
 aws ecs execute-command --cluster $ECS_CLUSTER \
     --task $TASK_ARN \
