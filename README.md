@@ -131,6 +131,20 @@ docker compose logs -f
 docker compose restart
 ```
 
+## Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `OPENAI_API_KEY` | Yes | - | OpenAI API key |
+| `EXA_API_KEY` | No | - | Exa API key for web research |
+| `DB_HOST` | No | `localhost` | Database host |
+| `DB_PORT` | No | `5432` | Database port |
+| `DB_USER` | No | `ai` | Database user |
+| `DB_PASS` | No | `ai` | Database password |
+| `DB_DATABASE` | No | `ai` | Database name |
+| `DATA_DIR` | No | `/data` | Directory for DuckDB storage |
+| `RUNTIME_ENV` | No | `prd` | Set to `dev` for auto-reload |
+
 ## Local Development
 
 For development without Docker:
