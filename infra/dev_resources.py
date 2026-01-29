@@ -34,8 +34,11 @@ dev_db = PgVectorDb(
 # -*- Container environment
 container_env = {
     "RUNTIME_ENV": "dev",
+    # Data directory for Pal agent's DuckDB
+    "DATA_DIR": "/app/.data",
     # Get the OpenAI API key and Exa API key from the local environment
     "OPENAI_API_KEY": getenv("OPENAI_API_KEY"),
+    "EXA_API_KEY": getenv("EXA_API_KEY", ""),
     # Database configuration
     "DB_HOST": dev_db.get_db_host(),
     "DB_PORT": dev_db.get_db_port(),
