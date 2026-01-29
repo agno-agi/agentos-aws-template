@@ -34,7 +34,7 @@ from db.session import db_url, get_postgres_db
 # ============================================================================
 # Setup
 # ============================================================================
-agent_db = get_postgres_db("pal-agent-db")
+agent_db = get_postgres_db()
 data_dir = Path(getenv("DATA_DIR", "/data"))
 data_dir.mkdir(parents=True, exist_ok=True)
 
