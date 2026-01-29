@@ -14,13 +14,14 @@ from agno.os import AgentOS
 
 from agents.knowledge_agent import knowledge_agent
 from agents.mcp_agent import mcp_agent
+from agents.pal import pal
 
 # ============================================================================
 # Create AgentOS
 # ============================================================================
 agent_os = AgentOS(
     name="AgentOS",
-    agents=[knowledge_agent, mcp_agent],
+    agents=[knowledge_agent, mcp_agent, pal],
     config=str(Path(__file__).parent / "config.yaml"),
 )
 

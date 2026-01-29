@@ -19,6 +19,7 @@ distro==1.9.0
 dnspython==2.8.0
 docker==7.1.0
 docstring-parser==0.17.0
+duckdb==1.4.4
 email-validator==2.3.0
 fastapi==0.128.0
 fastapi-cli==0.0.20

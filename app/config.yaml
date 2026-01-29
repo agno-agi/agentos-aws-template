@@ -8,3 +8,7 @@ chat:
       - "What is Agno?"
       - "What is AgentOS?"
       - "What can you do?"
+    pal:
+      - "Note: testing the Pal agent"
+      - "Search for Anthropic Claude"
+      - "What have I saved?"

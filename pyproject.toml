@@ -18,7 +18,8 @@ dependencies = [
   "boto3",
   "wikipedia",
   "alembic",
-  "mcp"
+  "mcp",
+  "duckdb",
 ]
 
 [project.optional-dependencies]
@@ -45,7 +46,7 @@ plugins = ["pydantic.mypy"]
 exclude = [".venv*"]
 
 [[tool.mypy.overrides]]
-module = ["pgvector.*", "setuptools.*", "agno.*",]
+module = ["pgvector.*", "setuptools.*", "agno.*", "duckdb.*"]
 ignore_missing_imports = true
 
 [tool.uv.pip]
