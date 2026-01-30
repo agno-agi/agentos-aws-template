@@ -35,16 +35,10 @@ from db import db_url, get_postgres_db
 # Setup
 # ============================================================================
 agent_db = get_postgres_db(contents_table="pal_contents")
+data_dir = Path(getenv("DATA_DIR", "/data"))
+data_dir.mkdir(parents=True, exist_ok=True)
 
-
-def get_duckdb_path() -> str:
-    """Get DuckDB path, creating directory if needed."""
-    data_dir = Path(getenv("DATA_DIR", "/data"))
-    data_dir.mkdir(parents=True, exist_ok=True)
-    return str(data_dir / "pal.db")
-
-
-duckdb_path = get_duckdb_path()
+duckdb_path = str(data_dir / "pal.db")
 
 # Exa MCP for research
 EXA_API_KEY = getenv("EXA_API_KEY", "")
