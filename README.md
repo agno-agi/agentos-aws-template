@@ -20,7 +20,7 @@ Deploy a multi-agent system to production on AWS. Develop locally with Docker, d
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop)
 - [OpenAI API key](https://platform.openai.com/api-keys)
-- [Agno CLI](https://docs.agno.com/introduction/installation#agno-cli)
+- [Agno CLI](https://docs.agno.com/introduction/installation#agno-cli) (`pip install agno`)
 
 ### 1. Clone and configure
 ```sh
@@ -105,6 +105,7 @@ aws sts get-caller-identity --query Account --output text
 Update `infra/settings.py`:
 ```python
 image_repo="YOUR_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com",
+push_images=True,
 ```
 
 Before deploying, authenticate Docker to ECR:
@@ -135,6 +136,11 @@ This creates:
 - ECS Cluster, Task Definition, Service
 
 ### Connect to control plane
+
+Get your load balancer URL:
+```sh
+aws elbv2 describe-load-balancers --query 'LoadBalancers[?contains(LoadBalancerName, `agentos-aws-template`)].DNSName' --output text
+```
 
 1. Set up HTTPS for your load balancer ([guide](https://docs.agno.com/production/aws/domain-https))
 2. Open [os.agno.com](https://os.agno.com)
@@ -351,6 +357,7 @@ python -m app.main
 ## Learn More
 
 - [Managing AWS Resources](https://docs.agno.com/production/aws/production-app)
+- [HTTPS Setup Guide](https://docs.agno.com/production/aws/domain-https)
 - [Agno Documentation](https://docs.agno.com)
 - [AgentOS Documentation](https://docs.agno.com/agent-os/introduction)
 - [Tools & Integrations](https://docs.agno.com/tools/toolkits)
