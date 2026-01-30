@@ -163,7 +163,7 @@ prd_ecs_cluster = EcsCluster(
 container_env = {
     "RUNTIME_ENV": "prd",
     # Data directory for Pal agent's DuckDB
-    "DATA_DIR": "/app/.data",
+    "DATA_DIR": "/data",
     # Get the OpenAI API key and Exa API key from the local environment
     "OPENAI_API_KEY": getenv("OPENAI_API_KEY"),
     "EXA_API_KEY": getenv("EXA_API_KEY", ""),
@@ -175,8 +175,6 @@ container_env = {
     "DB_DATABASE": AwsReference(prd_db.get_db_name),
     # Wait for database to be available before starting the application
     "WAIT_FOR_DB": prd_db.enabled,
-    # Migrate database on startup using alembic
-    "MIGRATE_DB": prd_db.enabled,
 }
 
 # -*- FastApi running on ECS
@@ -184,7 +182,7 @@ prd_fastapi = FastApi(
     name=f"{infra_settings.prd_key}-api",
     group="api",
     image=prd_image,
-    command="uvicorn app.main:app --workers 2",
+    command="uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2",
     port_number=8000,
     ecs_task_cpu="1024",
     ecs_task_memory="2048",
