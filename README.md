@@ -12,33 +12,43 @@ Deploy a multi-agent system to production on AWS. Develop locally with Docker, d
 | Knowledge Agent | RAG | Answers questions from a knowledge base |
 | MCP Agent | Tool Use | Connects to external services via MCP |
 
-**Pal** (Personal Agent that Learns) is your AI-powered second brain. It researches, captures, organizes, connects, and retrieves your personal knowledge - so nothing useful is ever lost.
+**Pal** (Personal Agent that Learns) is your AI-powered second brain. It researches, captures, organizes, connects, and retrieves your personal knowledge.
 
-## Quick Start
+---
+
+## Quick Start: Local Development
 
 ### Prerequisites
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop) installed and running
 - [OpenAI API key](https://platform.openai.com/api-keys)
 - [Agno CLI](https://docs.agno.com/introduction/installation#agno-cli) (`pip install agno`)
 
 ### 1. Clone and configure
+
 ```sh
 git clone https://github.com/agno-agi/agentos-aws-template.git agentos-aws
 cd agentos-aws
 
 cp example.env .env
-# Add your OPENAI_API_KEY to .env
+```
+
+Edit `.env` and add your OpenAI API key:
+```
+OPENAI_API_KEY=sk-your-key-here
 ```
 
 ### 2. Start locally
+
 ```sh
 ag infra up --env dev
 ```
 
-- **API**: http://localhost:8080
-- **Docs**: http://localhost:8080/docs
-- **Database**: localhost:5432
+This starts two containers:
+- **API server** at http://localhost:8080
+- **PostgreSQL** at localhost:5432
+
+**Verify:** Open http://localhost:8080/docs — you should see the API documentation.
 
 ### 3. Connect to control plane
 
@@ -46,113 +56,278 @@ ag infra up --env dev
 2. Click "Add OS" → "Local"
 3. Enter `http://localhost:8080`
 
-### Manage local deployment
+**Verify:** You should see your agents listed in the control plane.
+
+### Managing local deployment
 
 ```sh
 docker logs -f agentos-aws-template-api    # View logs
-ag infra up --env dev -y                   # Rebuild after changes
-ag infra down --env dev                    # Stop
+ag infra up --env dev -y                   # Rebuild after code changes
+ag infra down --env dev                    # Stop containers
 ```
 
-## Deploy to AWS
+---
 
-### AWS Prerequisites
+## Deploy to AWS (Step-by-Step)
 
-#### 1. AWS CLI
+Follow these steps in order. Each step includes a verification command so you know it worked.
+
+> **Time estimate:** ~30 minutes for first deployment
+
+### Step 1: Install and Configure AWS CLI
+
+Install the [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html), then configure it:
 
 ```sh
 aws configure
-# Enter your AWS Access Key, Secret Key, and region (us-east-1)
 ```
 
-#### 2. Subnet IDs
+Enter:
+- **AWS Access Key ID:** Your access key
+- **AWS Secret Access Key:** Your secret key
+- **Default region:** `us-east-1` (recommended)
+- **Default output format:** `json`
 
-Get your default VPC subnet IDs:
-
+**Verify:**
 ```sh
-aws ec2 describe-subnets --query 'Subnets[*].[SubnetId,AvailabilityZone]' --output table
+aws sts get-caller-identity
 ```
 
-Update `infra/settings.py` with two subnet IDs from different availability zones:
+You should see your account ID and user ARN:
+```json
+{
+    "UserId": "AIDAEXAMPLE",
+    "Account": "123456789012",
+    "Arn": "arn:aws:iam::123456789012:user/your-user"
+}
+```
 
+### Step 2: Get Your Subnet IDs
+
+Subnets are network segments in your AWS VPC. You need two subnets from different availability zones for high availability.
+
+List your subnets:
+```sh
+aws ec2 describe-subnets --query 'Subnets[*].[SubnetId,AvailabilityZone,VpcId]' --output table
+```
+
+Example output:
+```
+---------------------------------------------------------
+|                    DescribeSubnets                    |
++---------------------------+---------------+-----------+
+|  subnet-0abc123def456789a |  us-east-1a   |  vpc-xxx  |
+|  subnet-0def456789abc123b |  us-east-1b   |  vpc-xxx  |
+|  subnet-0ghi789abc123def4 |  us-east-1c   |  vpc-xxx  |
++---------------------------+---------------+-----------+
+```
+
+Pick **two subnet IDs from different availability zones** (e.g., one from `us-east-1a` and one from `us-east-1b`).
+
+Edit `infra/settings.py` and add your subnet IDs:
 ```python
-aws_subnet_ids=["subnet-xxx", "subnet-yyy"],
+aws_subnet_ids=["subnet-0abc123def456789a", "subnet-0def456789abc123b"],
 ```
 
-#### 3. Container Registry
+**Verify:** The line is uncommented and contains your actual subnet IDs.
 
-**Option A: DockerHub**
+> **No subnets?** You may need to create a default VPC. Run: `aws ec2 create-default-vpc`
+
+### Step 3: Set Up Container Registry (ECR)
+
+AWS ECR (Elastic Container Registry) stores your Docker images. Create a repository:
 
 ```sh
-docker login
-```
-
-Update `infra/settings.py`:
-```python
-image_repo="your-dockerhub-username",
-```
-
-**Option B: AWS ECR (recommended)**
-
-```sh
-# Create ECR repository
 aws ecr create-repository --repository-name agentos-aws-template --region us-east-1
+```
 
-# Get your AWS account ID
+Get your AWS account ID:
+```sh
 aws sts get-caller-identity --query Account --output text
 ```
 
-Update `infra/settings.py`:
+Edit `infra/settings.py` with your account ID:
 ```python
-image_repo="YOUR_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com",
+image_repo="123456789012.dkr.ecr.us-east-1.amazonaws.com",
+```
+
+Also uncomment `push_images`:
+```python
 push_images=True,
 ```
 
-Before deploying, authenticate Docker to ECR:
+**Verify:**
 ```sh
-./scripts/auth_ecr.sh
+aws ecr describe-repositories --repository-names agentos-aws-template
 ```
 
-#### 4. Secrets
+You should see your repository details.
 
+> **Alternative: DockerHub** — If you prefer DockerHub, run `docker login` and set `image_repo="your-dockerhub-username"` instead.
+
+### Step 4: Configure Secrets
+
+Secrets are sensitive values (API keys, passwords) that get stored in AWS Secrets Manager.
+
+Copy the example secrets:
 ```sh
 cp -r infra/example_secrets infra/secrets
 ```
 
 Edit the secret files:
-- `infra/secrets/prd_api_secrets.yml` - Add your `OPENAI_API_KEY`
-- `infra/secrets/prd_db_secrets.yml` - Set `MASTER_USER_PASSWORD`
 
-### Deploy
+**`infra/secrets/prd_api_secrets.yml`** — Add your OpenAI API key:
+```yaml
+SECRET_KEY: "your-random-secret-key"
+OPENAI_API_KEY: "sk-your-openai-key"
+```
+
+**`infra/secrets/prd_db_secrets.yml`** — Set a database password:
+```yaml
+MASTER_USERNAME: agno
+MASTER_USER_PASSWORD: "YourSecurePassword123!"
+```
+
+**Verify:**
+```sh
+ls infra/secrets/
+```
+
+You should see: `dev_api_secrets.yml  prd_api_secrets.yml  prd_db_secrets.yml`
+
+### Step 5: Authenticate Docker to ECR
+
+Before deploying, authenticate Docker to push images to ECR:
+
+```sh
+./scripts/auth_ecr.sh
+```
+
+Or manually:
+```sh
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com
+```
+
+**Verify:** You should see "Login Succeeded".
+
+### Step 6: Deploy to AWS
+
+Now deploy:
 
 ```sh
 ag infra up --env prd
 ```
 
-This creates:
-- Security Groups, Secrets, DB Subnet Group
-- RDS PostgreSQL instance
-- Load Balancer, Target Group, Listener
-- ECS Cluster, Task Definition, Service
+This creates the following AWS resources:
+- Security Groups (for network access control)
+- Secrets (in AWS Secrets Manager)
+- RDS PostgreSQL database
+- Application Load Balancer
+- ECS Cluster with your application
 
-### Connect to control plane
+**Time estimate:** 10-15 minutes for first deployment.
 
-Get your load balancer URL:
+**Verify:**
 ```sh
-aws elbv2 describe-load-balancers --query 'LoadBalancers[?contains(LoadBalancerName, `agentos-aws-template`)].DNSName' --output text
+aws ecs list-services --cluster agentos-aws-template-prd-cluster
 ```
 
-1. Set up HTTPS for your load balancer ([guide](https://docs.agno.com/production/aws/domain-https))
+You should see your service listed.
+
+### Step 7: Get Your Application URL
+
+Get your load balancer DNS:
+
+```sh
+aws elbv2 describe-load-balancers --names agentos-aws-template-prd-api-lb --query 'LoadBalancers[0].DNSName' --output text
+```
+
+**Verify:** Open `http://YOUR-LOAD-BALANCER-DNS/docs` in a browser. You should see the API documentation.
+
+### Step 8: Connect to Control Plane
+
+1. **Set up HTTPS** for your load balancer — see [HTTPS setup guide](https://docs.agno.com/production/aws/domain-https)
 2. Open [os.agno.com](https://os.agno.com)
 3. Click "Add OS" → "Live"
-4. Enter your load balancer domain
+4. Enter your load balancer domain (with HTTPS)
 
-### Manage AWS deployment
+### Managing AWS Deployment
 
 ```sh
-ag infra up --env prd -y      # Update after changes
-ag infra down --env prd       # Tear down
+ag infra up --env prd -y      # Update after code changes
+ag infra down --env prd       # Tear down all resources (removes database!)
 ```
+
+---
+
+## Troubleshooting
+
+### "No subnets found" or empty subnet list
+
+Your AWS account may not have a default VPC. Create one:
+```sh
+aws ec2 create-default-vpc
+```
+
+Then re-run the subnet list command from Step 2.
+
+### "ECR authentication failed" or "no basic auth credentials"
+
+Re-run the ECR authentication:
+```sh
+./scripts/auth_ecr.sh
+```
+
+Or check that your AWS CLI is configured correctly:
+```sh
+aws sts get-caller-identity
+```
+
+### "Image push failed" or "repository does not exist"
+
+Make sure the ECR repository exists:
+```sh
+aws ecr describe-repositories --repository-names agentos-aws-template
+```
+
+If not, create it:
+```sh
+aws ecr create-repository --repository-name agentos-aws-template --region us-east-1
+```
+
+### ECS task keeps restarting or failing
+
+Check the task logs:
+```sh
+aws logs tail /ecs/agentos-aws-template-prd --follow
+```
+
+Common causes:
+- Missing environment variables → Check your secrets files
+- Database connection failed → Check security groups allow traffic
+- Application crash → Check for errors in the logs
+
+### Load balancer shows "unhealthy" targets
+
+The health check may be failing. Verify the health check endpoint:
+```sh
+curl http://YOUR-LOAD-BALANCER-DNS/health
+```
+
+Should return `{"status": "healthy"}`.
+
+### "Connection refused" to database
+
+Check that security groups allow traffic between ECS tasks and RDS:
+```sh
+aws ec2 describe-security-groups --group-names agentos-aws-template-prd-sg agentos-aws-template-prd-db-sg
+```
+
+### Deployment is stuck or taking too long
+
+First deployments take 10-15 minutes. If it's been longer:
+1. Check CloudFormation for errors: AWS Console → CloudFormation
+2. Check ECS service events: AWS Console → ECS → Clusters → Services → Events
 
 ---
 
@@ -160,7 +335,7 @@ ag infra down --env prd       # Tear down
 
 ### Pal (Personal Agent that Learns)
 
-Your AI-powered second brain. Pal researches, captures, organizes, connects, and retrieves your personal knowledge - so nothing useful is ever lost.
+Your AI-powered second brain. Pal researches, captures, organizes, connects, and retrieves your personal knowledge.
 
 **What Pal stores:**
 
@@ -179,15 +354,12 @@ Note: decided to use Postgres for the new project - better JSON support
 Bookmark https://www.ashpreetbedi.com/articles/lm-technical-design - great intro
 Research event sourcing patterns and save the key findings
 What notes do I have?
-What do I know about event sourcing?
 ```
 
 **How it works:**
-- **DuckDB** stores your actual data (notes, bookmarks, people, etc.)
+- **DuckDB** stores structured data (notes, bookmarks, people, etc.)
 - **Learning system** remembers schemas and research findings
-- **Exa search** powers web research, company lookup, and people search
-
-**Data persistence:** Pal stores structured data in DuckDB at `/data/pal.db`. This persists across container restarts.
+- **Exa search** powers web research (requires `EXA_API_KEY`)
 
 ### Knowledge Agent
 
@@ -197,7 +369,6 @@ Answers questions using a vector knowledge base (RAG pattern).
 ```
 What is Agno?
 How do I create my first agent?
-What documents are in your knowledge base?
 ```
 
 **Load documents:**
@@ -205,7 +376,7 @@ What documents are in your knowledge base?
 # Local
 docker exec -it agentos-aws-template-api python -m agents.knowledge_agent
 
-# AWS
+# AWS (SSH into container)
 ECS_CLUSTER=agentos-aws-template-prd-cluster
 TASK_ARN=$(aws ecs list-tasks --cluster $ECS_CLUSTER --query "taskArns[0]" --output text)
 aws ecs execute-command --cluster $ECS_CLUSTER --task $TASK_ARN \
@@ -220,12 +391,12 @@ Connects to external tools via the Model Context Protocol.
 ```
 What tools do you have access to?
 Search the docs for how to use LearningMachine
-Find examples of agents with memory
 ```
 
 ---
 
 ## Project Structure
+
 ```
 ├── agents/
 │   ├── pal.py              # Personal second brain agent
@@ -235,13 +406,15 @@ Find examples of agents with memory
 │   ├── main.py             # AgentOS entry point
 │   └── config.yaml         # Quick prompts config
 ├── db/
-│   ├── session.py          # PostgreSQL database helpers
+│   ├── session.py          # PostgreSQL helpers
 │   └── url.py              # Connection URL builder
 ├── infra/
 │   ├── dev_resources.py    # Local Docker configuration
 │   ├── prd_resources.py    # AWS infrastructure
-│   └── settings.py         # Shared settings
-├── scripts/                # Helper scripts
+│   └── settings.py         # Shared settings (edit this for AWS)
+├── scripts/
+│   ├── auth_ecr.sh         # ECR authentication
+│   └── ...
 ├── Dockerfile
 └── pyproject.toml          # Dependencies
 ```
@@ -262,7 +435,7 @@ from db import get_postgres_db
 my_agent = Agent(
     id="my-agent",
     name="My Agent",
-    model=OpenAIResponses(id="gpt-5.2"),
+    model=OpenAIResponses(id="gpt-4o"),
     db=get_postgres_db(),
     instructions="You are a helpful assistant.",
 )
@@ -274,7 +447,6 @@ my_agent = Agent(
 from agents.my_agent import my_agent
 
 agent_os = AgentOS(
-    name="AgentOS",
     agents=[pal, knowledge_agent, mcp_agent, my_agent],
     ...
 )
@@ -292,10 +464,7 @@ from agno.tools.google_calendar import GoogleCalendarTools
 
 my_agent = Agent(
     ...
-    tools=[
-        SlackTools(),
-        GoogleCalendarTools(),
-    ],
+    tools=[SlackTools(), GoogleCalendarTools()],
 )
 ```
 
@@ -308,20 +477,19 @@ my_agent = Agent(
 ### Use a different model provider
 
 1. Add your API key to `.env` (e.g., `ANTHROPIC_API_KEY`)
-2. Update agents to use the new provider:
+2. Update agents:
 
 ```python
 from agno.models.anthropic import Claude
 
 model=Claude(id="claude-sonnet-4-5")
 ```
-3. Add dependency: `anthropic` in `pyproject.toml`
+
+3. Add dependency to `pyproject.toml`: `anthropic`
 
 ---
 
-## Local Development
-
-For development without Docker:
+## Local Development (Without Docker)
 
 ```sh
 # Install uv
@@ -331,25 +499,27 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ./scripts/venv_setup.sh
 source .venv/bin/activate
 
-# Start PostgreSQL (required)
-ag infra up --env dev  # or run postgres separately
+# Start PostgreSQL (still needs Docker)
+ag infra up --env dev
 
-# Run the app directly
+# Run app directly (with hot reload)
 python -m app.main
 ```
+
+---
 
 ## Environment Variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `OPENAI_API_KEY` | Yes | - | OpenAI API key |
-| `EXA_API_KEY` | No | - | Exa API key for web research (enables Pal's research tools) |
+| `EXA_API_KEY` | No | - | Exa API key (enables Pal's web research) |
 | `DB_HOST` | No | `localhost` | Database host |
 | `DB_PORT` | No | `5432` | Database port |
 | `DB_USER` | No | `ai` | Database user |
 | `DB_PASS` | No | `ai` | Database password |
 | `DB_DATABASE` | No | `ai` | Database name |
-| `DATA_DIR` | No | `/data` | Directory for DuckDB storage |
+| `DATA_DIR` | No | `/data` | DuckDB storage directory |
 | `RUNTIME_ENV` | No | `prd` | Set to `dev` for auto-reload |
 
 ---

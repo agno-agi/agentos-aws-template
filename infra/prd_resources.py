@@ -3,6 +3,7 @@ from os import getenv
 from agno.aws.app.fastapi import FastApi
 from agno.aws.resource.ec2 import InboundRule, SecurityGroup
 from agno.aws.resource.ecs import EcsCluster
+from agno.aws.resource.ecs.volume import EcsVolume
 from agno.aws.resource.rds import DbInstance, DbSubnetGroup
 from agno.aws.resource.reference import AwsReference
 from agno.aws.resource.s3 import S3Bucket
@@ -117,6 +118,26 @@ prd_db_sg = SecurityGroup(
     save_output=save_output,
 )
 
+# -*- Security Group for EFS (optional - only if efs_file_system_id is set)
+efs_file_system_id = infra_settings.efs_file_system_id
+prd_efs_sg = SecurityGroup(
+    name=f"{infra_settings.prd_key}-efs-sg",
+    group="storage",
+    enabled=efs_file_system_id is not None,
+    description="Security group for EFS file system",
+    inbound_rules=[
+        InboundRule(
+            description="Allow NFS from app containers",
+            port=2049,
+            security_group_id=AwsReference(prd_sg.get_security_group_id),
+        ),
+    ],
+    depends_on=[prd_sg],
+    subnets=infra_settings.aws_subnet_ids,
+    skip_delete=skip_delete,
+    save_output=save_output,
+)
+
 # -*- RDS Database Subnet Group
 prd_db_subnet_group = DbSubnetGroup(
     name=f"{infra_settings.prd_key}-db-sg",
@@ -177,12 +198,36 @@ container_env = {
     "WAIT_FOR_DB": prd_db.enabled,
 }
 
+# -*- EFS Volume for persistent storage (optional - only if efs_file_system_id is set)
+efs_access_point_id = infra_settings.efs_access_point_id
+prd_efs_volume = (
+    EcsVolume(
+        name="efs-data-volume",
+        efs_volume_configuration={
+            "fileSystemId": efs_file_system_id,
+            "transitEncryption": "ENABLED",
+            # Access point provides user/permission mapping (uid/gid 61000 for app user)
+            "authorizationConfig": {
+                "accessPointId": efs_access_point_id,
+                "iam": "DISABLED",
+            },
+        }
+        if efs_access_point_id
+        else {
+            "fileSystemId": efs_file_system_id,
+            "transitEncryption": "ENABLED",
+        },
+    )
+    if efs_file_system_id
+    else None
+)
+
 # -*- FastApi running on ECS
 prd_fastapi = FastApi(
     name=f"{infra_settings.prd_key}-api",
     group="api",
     image=prd_image,
-    command="uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2",
+    command="uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1",
     port_number=8000,
     ecs_task_cpu="1024",
     ecs_task_memory="2048",
@@ -198,6 +243,13 @@ prd_fastapi = FastApi(
     create_load_balancer=True,
     health_check_path="/health",
     env_vars=container_env,
+    # EFS volume for persistent storage (if configured)
+    ecs_volumes=[prd_efs_volume] if prd_efs_volume else None,
+    ecs_container_mount_points=(
+        [{"sourceVolume": "efs-data-volume", "containerPath": "/data"}]
+        if prd_efs_volume
+        else None
+    ),
     skip_delete=skip_delete,
     save_output=save_output,
     # Do not wait for the service to stabilize
@@ -221,6 +273,7 @@ prd_aws_config = AwsResources(
         prd_lb_sg,
         prd_sg,
         prd_db_sg,
+        prd_efs_sg,
         prd_secret,
         prd_db_secret,
         prd_db_subnet_group,

@@ -7,5 +7,6 @@ output
 # ignore secrets
 secrets
 
-# ignore yml files
+# ignore generated YAML files
 agent-os-template-prd-api
+agentos-aws-template-prd-api
