@@ -246,9 +246,7 @@ prd_fastapi = FastApi(
     # EFS volume for persistent storage (if configured)
     ecs_volumes=[prd_efs_volume] if prd_efs_volume else None,
     ecs_container_mount_points=(
-        [{"sourceVolume": "efs-data-volume", "containerPath": "/data"}]
-        if prd_efs_volume
-        else None
+        [{"sourceVolume": "efs-data-volume", "containerPath": "/data"}] if prd_efs_volume else None
     ),
     skip_delete=skip_delete,
     save_output=save_output,
