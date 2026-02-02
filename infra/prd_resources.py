@@ -119,7 +119,7 @@ prd_db_sg = SecurityGroup(
 )
 
 # -*- Security Group for EFS (optional - only if efs_file_system_id is set)
-efs_file_system_id = infra_settings.efs_file_system_id
+efs_file_system_id = getattr(infra_settings, "efs_file_system_id", None)
 prd_efs_sg = SecurityGroup(
     name=f"{infra_settings.prd_key}-efs-sg",
     group="storage",
@@ -199,7 +199,7 @@ container_env = {
 }
 
 # -*- EFS Volume for persistent storage (optional - only if efs_file_system_id is set)
-efs_access_point_id = infra_settings.efs_access_point_id
+efs_access_point_id = getattr(infra_settings, "efs_access_point_id", None)
 prd_efs_volume = (
     EcsVolume(
         name="efs-data-volume",
@@ -227,7 +227,7 @@ prd_fastapi = FastApi(
     name=f"{infra_settings.prd_key}-api",
     group="api",
     image=prd_image,
-    command="uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1",
+    command="uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2",
     port_number=8000,
     ecs_task_cpu="1024",
     ecs_task_memory="2048",
