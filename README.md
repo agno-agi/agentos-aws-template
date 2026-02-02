@@ -45,16 +45,16 @@ ag infra up --env dev
 ```
 
 This starts two containers:
-- **API server** at http://localhost:8080
+- **API server** at http://localhost:8000
 - **PostgreSQL** at localhost:5432
 
-**Verify:** Open http://localhost:8080/docs — you should see the API documentation.
+**Verify:** Open http://localhost:8000/docs — you should see the API documentation.
 
 ### 3. Connect to control plane
 
 1. Open [os.agno.com](https://os.agno.com)
 2. Click "Add OS" → "Local"
-3. Enter `http://localhost:8080`
+3. Enter `http://localhost:8000`
 
 **Verify:** You should see your agents listed in the control plane.
 
@@ -176,10 +176,10 @@ cp -r infra/example_secrets infra/secrets
 
 Edit the secret files:
 
-**`infra/secrets/prd_api_secrets.yml`** — Add your OpenAI API key:
+**`infra/secrets/prd_api_secrets.yml`** — Add your API keys:
 ```yaml
-SECRET_KEY: "your-random-secret-key"
 OPENAI_API_KEY: "sk-your-openai-key"
+EXA_API_KEY: "your-exa-key"  # Optional: enables Pal's web research
 ```
 
 **`infra/secrets/prd_db_secrets.yml`** — Set a database password:
@@ -246,7 +246,7 @@ aws elbv2 describe-load-balancers --names agentos-aws-template-prd-api-lb --quer
 
 ### Step 8: Connect to Control Plane
 
-1. **Set up HTTPS** for your load balancer — see [HTTPS setup guide](https://docs.agno.com/production/aws/domain-https)
+1. **Set up HTTPS** for your load balancer — see [HTTPS setup guide](https://docs.agno.com/production/aws/after-deploy/https)
 2. Open [os.agno.com](https://os.agno.com)
 3. Click "Add OS" → "Live"
 4. Enter your load balancer domain (with HTTPS)
@@ -314,7 +314,7 @@ The health check may be failing. Verify the health check endpoint:
 curl http://YOUR-LOAD-BALANCER-DNS/health
 ```
 
-Should return `{"status": "healthy"}`.
+Should return `{"status": "healthy"}`. The app runs on port 8000 inside the container.
 
 ### "Connection refused" to database
 
@@ -371,7 +371,7 @@ What is Agno?
 How do I create my first agent?
 ```
 
-**Load documents:**
+**Load default documents:**
 ```sh
 # Local
 docker exec -it agentos-aws-template-api python -m agents.knowledge_agent
@@ -382,6 +382,18 @@ TASK_ARN=$(aws ecs list-tasks --cluster $ECS_CLUSTER --query "taskArns[0]" --out
 aws ecs execute-command --cluster $ECS_CLUSTER --task $TASK_ARN \
     --container agentos-aws-template --interactive --command "python -m agents.knowledge_agent"
 ```
+
+**Add custom documents:** Edit `agents/knowledge_agent.py` and add to the `load_default_documents()` function:
+
+```python
+knowledge.insert(
+    name="My Document",
+    url="https://example.com/doc.md",  # or local path
+    skip_if_exists=True,
+)
+```
+
+Then run the load command above to index your documents.
 
 ### MCP Agent
 
@@ -435,7 +447,7 @@ from db import get_postgres_db
 my_agent = Agent(
     id="my-agent",
     name="My Agent",
-    model=OpenAIResponses(id="gpt-4o"),
+    model=OpenAIResponses(id="gpt-5.2"),
     db=get_postgres_db(),
     instructions="You are a helpful assistant.",
 )
@@ -526,8 +538,8 @@ python -m app.main
 
 ## Learn More
 
-- [Managing AWS Resources](https://docs.agno.com/production/aws/production-app)
-- [HTTPS Setup Guide](https://docs.agno.com/production/aws/domain-https)
+- [Production Updates](https://docs.agno.com/production/aws/operate/updates)
+- [HTTPS Setup Guide](https://docs.agno.com/production/aws/after-deploy/https)
 - [Agno Documentation](https://docs.agno.com)
 - [AgentOS Documentation](https://docs.agno.com/agent-os/introduction)
 - [Tools & Integrations](https://docs.agno.com/tools/toolkits)
