@@ -40,4 +40,7 @@ infra_settings = InfraSettings(
     # aws_subnet_ids=["subnet-xyz", "subnet-xyz"],
     # Security Groups for AWS resources
     # aws_security_group_ids=["sg-xyz", "sg-xyz"],
+    # -*- EFS settings (for persistent storage)
+    # efs_file_system_id="fs-xyz",
+    # efs_access_point_id="fsap-xyz",
 )
