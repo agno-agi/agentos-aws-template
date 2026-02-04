@@ -260,6 +260,54 @@ ag infra down --env prd       # Tear down all resources (removes database!)
 
 ---
 
+## Persistent Storage with EFS (Optional)
+
+> **Important:** Pal's local data (notes, bookmarks, research in DuckDB) is stored in ephemeral container storage and **will be lost on restart**. Agent sessions, memories, and knowledge base embeddings are stored in PostgreSQL and always persist. Set up EFS if you need Pal's data to survive restarts.
+
+### Step 1: Create EFS File System
+
+```sh
+aws efs create-file-system --encrypted --tags Key=Name,Value=agentos-data --region us-east-1
+```
+
+Note the `FileSystemId` from the output (e.g., `fs-0abc123def456789a`).
+
+> **Note:** Use the same AWS region as `infra/settings.py` (`aws_region`). If you're not using `us-east-1`, change the `--region` in the commands below.
+
+### Step 2: Create Access Point
+
+```sh
+aws efs create-access-point \
+    --file-system-id fs-YOUR-ID \
+    --posix-user Uid=61000,Gid=61000 \
+    --root-directory "Path=/data,CreationInfo={OwnerUid=61000,OwnerGid=61000,Permissions=755}" \
+    --region us-east-1
+```
+
+Note the `AccessPointId` from the output (e.g., `fsap-0abc123def456789a`).
+
+### Step 3: Configure and Redeploy
+
+Edit `infra/settings.py` (uncomment and set these values):
+```python
+efs_file_system_id="fs-YOUR-FILE-SYSTEM-ID",
+efs_access_point_id="fsap-YOUR-ACCESS-POINT-ID",
+```
+
+Then redeploy:
+```sh
+ag infra up --env prd -y
+```
+
+**Verify:**
+```sh
+aws efs describe-mount-targets --file-system-id fs-YOUR-FILE-SYSTEM-ID
+```
+
+> **Note:** EFS requires mount targets in the same VPC/subnets your ECS service runs in (typically one per AZ). Also make sure the mount target security group allows inbound NFS (port 2049) from the ECS task security group. See [AWS EFS docs](https://docs.aws.amazon.com/efs/latest/ug/accessing-fs.html).
+
+---
+
 ## Troubleshooting
 
 ### "No subnets found" or empty subnet list
