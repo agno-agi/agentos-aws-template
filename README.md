@@ -30,7 +30,11 @@ cp example.env .env
 # Add your OPENAI_API_KEY to .env
 ```
 
+> Agno works with any model provider. Update the agents in `/agents` and add dependencies to `pyproject.toml`.
+
 ### 2. Start locally
+
+This template supports 2 environments: `dev` (local Docker) and `prd` (AWS).
 ```sh
 ag infra up --env dev
 ```
@@ -44,6 +48,22 @@ ag infra up --env dev
 1. Open [os.agno.com](https://os.agno.com)
 2. Click "Add OS" → "Local"
 3. Enter `http://localhost:8080`
+
+### Stop the application
+
+```sh
+ag infra down
+```
+
+### View logs
+```sh
+docker logs -f agentos-aws-template-api
+```
+
+### Restart after code changes
+```sh
+docker restart agentos-aws-template-api
+```
 
 ## Deploy to AWS
 
