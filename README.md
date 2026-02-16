@@ -1,134 +1,211 @@
-# Agent OS AWS Template
+# AgentOS AWS Template
 
-Run agents, teams, and workflows as a production-ready API. Develop on Docker, deploy to AWS.
+Deploy a multi-agent system on AWS with ECS Fargate, RDS PostgreSQL, and an application load balancer.
 
-## Quickstart
+## What's Included
 
-### Prerequisites
+| Agent | Pattern | Description |
+|-------|---------|-------------|
+| Knowledge Agent | Agentic RAG | Answers questions from a knowledge base. |
+| MCP Agent | MCP Tool Use | Connects to external services via MCP. |
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop) installed and running
-- [OpenAI API key](https://platform.openai.com/api-keys)
-
-### Clone and configure
+## Get Started
 
 ```sh
+# Clone the repo
 git clone https://github.com/agno-agi/agentos-aws-template.git agentos-aws
 cd agentos-aws
 
+# Add OPENAI_API_KEY
 cp example.env .env
-# Add OPENAI_API_KEY to .env
-```
+# Edit .env and add your key
 
-> Agno works with any model provider. Update the agents in `/agents` and add dependencies to `pyproject.toml`.
-
-### Start the application
-
-This template supports 2 environments, `dev` and `prd`.
-
-### Run the application locally in docker:
-
-```sh
+# Start the application
 ag infra up --env dev
+
+# Load documents for the knowledge agent
+docker exec -it agentos-aws-template-api python -m agents.knowledge_agent
 ```
 
-This command starts:
+Confirm AgentOS is running at [http://localhost:8000/docs](http://localhost:8000/docs).
 
-- The **AgentOS instance**, which is a FastAPI server, running on [http://localhost:8080](http://localhost:8080).
-- The **PostgreSQL database**, accessible on `localhost:5432`.
+### Connect to the Web UI
 
-Open http://localhost:8000/docs to see the API.
-
-### Connect to the control plane
-
-1. Open [os.agno.com](https://os.agno.com)
-2. Click "Add OS" and select "Local"
-3. Enter `http://localhost:8000`
+1. Open [os.agno.com](https://os.agno.com) and login
+2. Add OS → Local → `http://localhost:8000`
+3. Click "Connect"
 
 ### Stop the application
 
-When you're done, stop the application using:
-
 ```sh
-ag infra down
+ag infra down --env dev
 ```
 
-### Run the application in AWS:
+## Deploy to AWS
+
+Requires:
+- [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) installed and configured
+- `OPENAI_API_KEY` set in your environment
 
 ```sh
 ag infra up --env prd
 ```
 
-### This command will create the following resources:
+See the [full AWS deployment guide](https://docs.agno.com/production/templates/aws) for configuring subnets, HTTPS, and connecting to the control plane.
 
-- AWS Security Groups
-- AWS Secrets
-- AWS Db Subnet Group
-- AWS RDS Instance
-- AWS Load Balancer
-- AWS Target Group
-- AWS Listener
-- AWS ECS Cluster
-- AWS ECS Service
-- AWS ECS Task
-- AWS ECS Task Definition
+### Manage deployment
 
-### Connect to the control plane
+```sh
+ag infra patch --env prd     # Update after changes
+ag infra down --env prd      # Tear down all resources
+```
 
-1. In order to connect your load balancer to the Control plane, you need to make sure its HTTPS. Read more [here](https://docs.agno.com/production/aws/domain-https)
-1. Open [os.agno.com](https://os.agno.com)
-2. Click "Add OS" and select "Live"
-3. Enter the domain of your load balancer
+## The Agents
 
-## Project Structure
+### Knowledge Agent
+
+Answers questions using hybrid search over a vector database (Agentic RAG).
+
+**Load documents:**
+
+```sh
+# Local
+docker exec -it agentos-aws-template-api python -m agents.knowledge_agent
+
+# AWS
+ECS_CLUSTER=agentos-aws-template-prd
+TASK_ARN=$(aws ecs list-tasks --cluster $ECS_CLUSTER --query "taskArns[0]" --output text)
+
+aws ecs execute-command --cluster $ECS_CLUSTER \
+    --task $TASK_ARN \
+    --container agentos-aws-template \
+    --interactive \
+    --command "python -m agents.knowledge_agent"
+```
+
+**Try it:**
 
 ```
-agentos-aws/
-├── agents/              # Your agents
-├── app/                 # AgentOS entry point
-├── db/                  # Database connection
-├── scripts/             # Helper scripts
-├── infra/               # Infrastructure configuration
-├── Dockerfile           # Container build
-├── example.env          # Example environment variables
-└── pyproject.toml       # Python dependencies
+What is Agno?
+How do I create my first agent?
+What documents are in your knowledge base?
+```
+
+### MCP Agent
+
+Connects to external tools via the Model Context Protocol.
+
+**Try it:**
+
+```
+What tools do you have access to?
+Search the docs for how to use LearningMachine
+Find examples of agents with memory
+```
+
+## Project Structure
+```
+├── agents/                  # Agents
+│   ├── knowledge_agent.py   # Agentic RAG
+│   └── mcp_agent.py         # MCP Tool Use
+├── app/
+│   ├── main.py              # AgentOS entry point
+│   └── config.yaml          # Quick prompts config
+├── db/
+│   ├── session.py           # PostgreSQL database helpers
+│   └── url.py               # Connection URL builder
+├── infra/                   # AWS infrastructure config
+│   ├── settings.py          # Region, subnets, image settings
+│   ├── dev_resources.py     # Docker resources (local)
+│   └── prd_resources.py     # AWS resources (ECS, RDS, ALB)
+├── scripts/                 # Helper scripts
+├── Dockerfile
+├── example.env
+└── pyproject.toml           # Dependencies
 ```
 
 ## Common Tasks
 
-### Load a knowledge base
+### Add your own agent
 
-Locally:
-```sh
-docker exec -it agentos-aws-template-api python -m agents.knowledge_agent
+1. Create `agents/my_agent.py`:
+
+```python
+from agno.agent import Agent
+from agno.models.openai import OpenAIResponses
+from db import get_postgres_db
+
+my_agent = Agent(
+    id="my-agent",
+    name="My Agent",
+    model=OpenAIResponses(id="gpt-5.2"),
+    db=get_postgres_db(),
+    instructions="You are a helpful assistant.",
+)
 ```
 
-On AWS:
-```sh
-ECS_CLUSTER=agentos-aws-template-prd-cluster
-TASK_ARN=$(aws ecs list-tasks --cluster agentos-aws-template-prd-cluster --query "taskArns[0]" --output text)
-CONTAINER_NAME=agentos-aws-template
+2. Register in `app/main.py`:
 
-aws ecs execute-command --cluster $ECS_CLUSTER \
-    --task $TASK_ARN \
-    --container $CONTAINER_NAME \
-    --interactive \
-    --command "zsh"
+```python
+from agents.my_agent import my_agent
+
+agent_os = AgentOS(
+    name="AgentOS",
+    agents=[knowledge_agent, mcp_agent, my_agent],
+    ...
+)
 ```
 
-After SSHing into the container, run the following command to load the knowledge base:
+3. Restart: `ag infra up --env dev`
 
-```sh
-python -m agents.knowledge_agent
+### Add tools to an agent
+
+Agno includes 100+ tool integrations. See the [full list](https://docs.agno.com/tools/toolkits).
+
+```python
+from agno.tools.slack import SlackTools
+from agno.tools.google_calendar import GoogleCalendarTools
+
+my_agent = Agent(
+    ...
+    tools=[
+        SlackTools(),
+        GoogleCalendarTools(),
+    ],
+)
 ```
 
-### View logs
-```sh
-docker compose logs -f
-```
+### Add dependencies
 
-### Restart after code changes
+1. Edit `pyproject.toml`
+2. Regenerate requirements: `./scripts/generate_requirements.sh`
+3. Rebuild: `ag infra up --env dev`
+
+### Use a different model provider
+
+1. Add your API key to `.env` (e.g., `ANTHROPIC_API_KEY`)
+2. Update agents to use the new provider:
+
+```python
+from agno.models.anthropic import Claude
+
+model=Claude(id="claude-sonnet-4-5")
+```
+3. Add dependency: `anthropic` in `pyproject.toml`
+
+---
+
+## Local Development
+
+For development without Docker:
+
 ```sh
-docker compose restart
+# Install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Setup environment
+./scripts/venv_setup.sh
+source .venv/bin/activate
 ```
 
 ## Environment Variables
@@ -136,45 +213,16 @@ docker compose restart
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `OPENAI_API_KEY` | Yes | - | OpenAI API key |
-| `EXA_API_KEY` | No | - | Exa API key for web research |
 | `DB_HOST` | No | `localhost` | Database host |
 | `DB_PORT` | No | `5432` | Database port |
 | `DB_USER` | No | `ai` | Database user |
 | `DB_PASS` | No | `ai` | Database password |
 | `DB_DATABASE` | No | `ai` | Database name |
-| `DATA_DIR` | No | `/data` | Directory for DuckDB storage |
 | `RUNTIME_ENV` | No | `prd` | Set to `dev` for auto-reload |
-
-## Local Development
-
-For development without Docker:
-
-### Install uv
-```sh
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-### Setup environment
-```sh
-./scripts/venv_setup.sh
-source .venv/bin/activate
-```
-
-### Add dependencies
-
-1. Edit `pyproject.toml`
-2. Regenerate requirements:
-```sh
-./scripts/generate_requirements.sh
-```
-3. Rebuild:
-```sh
-docker compose up -d --build
-```
 
 ## Learn More
 
-- [Managing AWS Resources](https://docs.agno.com/production/aws/production-app)
+- [AWS Deployment Guide](https://docs.agno.com/production/templates/aws)
 - [Agno Documentation](https://docs.agno.com)
-- [AgentOS Documentation](https://docs.agno.com/agent-os)
-- [Discord Community](https://agno.link/discord)
+- [AgentOS Documentation](https://docs.agno.com/agent-os/introduction)
+- [Agno Discord](https://agno.com/discord)
