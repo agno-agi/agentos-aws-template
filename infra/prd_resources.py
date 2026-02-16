@@ -183,11 +183,7 @@ prd_ecs_cluster = EcsCluster(
 # -*- Build container environment
 container_env = {
     "RUNTIME_ENV": "prd",
-    # Data directory for Pal agent's DuckDB
-    "DATA_DIR": "/data",
-    # Get the OpenAI API key and Exa API key from the local environment
     "OPENAI_API_KEY": getenv("OPENAI_API_KEY"),
-    "EXA_API_KEY": getenv("EXA_API_KEY", ""),
     # Database configuration
     "DB_HOST": AwsReference(prd_db.get_db_endpoint),
     "DB_PORT": AwsReference(prd_db.get_db_port),

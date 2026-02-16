@@ -8,8 +8,8 @@ authors = [{ name = "Agno", email = "hello@agno.com" }]
 
 dependencies = [
   # Agno
-  "agno",
-  "agno-infra",
+  "agno==2.5.2",
+  "agno-infra==1.1.1",
   # API
   "fastapi[standard]",
   # Models
@@ -18,11 +18,8 @@ dependencies = [
   "pgvector",
   "psycopg[binary]",
   "sqlalchemy",
-  "duckdb",
   # Tools
   "mcp",
-  "reportlab",
-  "duckduckgo-search",
   # Tracing
   "opentelemetry-api",
   "opentelemetry-sdk",
@@ -30,7 +27,6 @@ dependencies = [
   # AWS-specific
   "docker",
   "boto3",
-  "wikipedia",
 ]
 
 [project.optional-dependencies]
@@ -41,6 +37,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
+include = ["agents*", "db*", "app*", "infra*"]
 
 [tool.ruff]
 line-length = 120
@@ -57,7 +54,7 @@ plugins = ["pydantic.mypy"]
 exclude = [".venv*"]
 
 [[tool.mypy.overrides]]
-module = ["pgvector.*", "setuptools.*", "agno.*", "duckdb.*"]
+module = ["pgvector.*", "setuptools.*", "agno.*", "httpx.*", "mcp.*", "docker.*", "boto3.*"]
 ignore_missing_imports = true
 
 [tool.uv.pip]

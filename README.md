@@ -33,7 +33,7 @@ ag infra up --env dev
 
 This command starts:
 
-- The **AgentOS instance**, which is a FastAPI server, running on [http://localhost:8080](http://localhost:8080).
+- The **AgentOS instance**, which is a FastAPI server, running on [http://localhost:8000](http://localhost:8000).
 - The **PostgreSQL database**, accessible on `localhost:5432`.
 
 Open http://localhost:8000/docs to see the API.
@@ -136,13 +136,11 @@ docker compose restart
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `OPENAI_API_KEY` | Yes | - | OpenAI API key |
-| `EXA_API_KEY` | No | - | Exa API key for web research |
 | `DB_HOST` | No | `localhost` | Database host |
 | `DB_PORT` | No | `5432` | Database port |
 | `DB_USER` | No | `ai` | Database user |
 | `DB_PASS` | No | `ai` | Database password |
 | `DB_DATABASE` | No | `ai` | Database name |
-| `DATA_DIR` | No | `/data` | Directory for DuckDB storage |
 | `RUNTIME_ENV` | No | `prd` | Set to `dev` for auto-reload |
 
 ## Local Development
