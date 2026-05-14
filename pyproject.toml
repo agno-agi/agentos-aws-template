@@ -10,6 +10,7 @@ authors = [{ name = "Agno", email = "hello@agno.com" }]
 dependencies = [
   "agno[os,slack]",
   "agno-infra",
+  "aiohttp",
   "fastapi[standard]",
   "mcp",
   "openai",
