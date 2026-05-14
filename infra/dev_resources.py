@@ -1,11 +1,16 @@
 from os import getenv
 
+from dotenv import load_dotenv
+
 from agno.docker.app.fastapi import FastApi
 from agno.docker.app.postgres import PgVectorDb
 from agno.docker.resource.image import DockerImage
 from agno.docker.resources import DockerResources
 
 from infra.settings import infra_settings
+
+# Load .env file
+load_dotenv()
 
 #
 # -*- Resources for the Development Environment
@@ -43,8 +48,6 @@ container_env = {
     "DB_DATABASE": dev_db.get_db_database(),
     # Wait for database to be available before starting the application
     "WAIT_FOR_DB": dev_db.enabled,
-    # Migrate database on startup using alembic
-    "MIGRATE_DB": dev_db.enabled,
 }
 
 # -*- AgentOS running on port 8000:8000
