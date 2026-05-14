@@ -39,7 +39,7 @@ cp example.env .env
 # Edit .env and add your key
 
 # Start the application
-docker compose up -d --build
+ag infra up --env dev
 ```
 
 Confirm AgentOS is running at [http://localhost:8000/docs](http://localhost:8000/docs).
@@ -53,7 +53,7 @@ Confirm AgentOS is running at [http://localhost:8000/docs](http://localhost:8000
 ### Step 3: Stop the application
 
 ```sh
-docker compose down
+ag infra down --env dev
 ```
 
 ## Deploy to AWS
@@ -111,7 +111,6 @@ ag infra down --env prd      # Tear down all resources
 │   ├── prd_resources.py     # AWS resources (ECS, RDS, ALB)
 │   └── example_secrets/     # Template secret files for deployment
 ├── scripts/                 # Helper scripts
-├── compose.yaml             # Docker Compose for local development
 ├── Dockerfile
 ├── example.env
 └── pyproject.toml           # Dependencies
@@ -145,7 +144,7 @@ my_agent = Agent(
 )
 ```
 
-Register in `app/main.py` and restart: `docker compose restart agentos-api`
+Register in `app/main.py` and restart: `ag infra up --env dev`
 
 ### Add tools to an agent
 
@@ -171,7 +170,7 @@ my_agent = Agent(
 # 2. Regenerate requirements
 ./scripts/generate_requirements.sh upgrade
 # 3. Rebuild
-docker compose up -d --build
+ag infra up --env dev
 ```
 
 ### Use a different model provider

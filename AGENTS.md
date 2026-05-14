@@ -34,25 +34,11 @@ Shared:
 | [`db/url.py`](db/url.py) | Builds the database URL from env. |
 | [`evals/cases.py`](evals/cases.py) | Eval cases (each is a `Case` with optional judge + reliability checks). |
 | [`evals/__main__.py`](evals/__main__.py) | `python -m evals` runner — wraps agno's `AgentAsJudgeEval` + `ReliabilityEval`. |
-| [`compose.yaml`](compose.yaml) | Docker Compose for local development. |
 | [`infra/`](infra/) | AWS infrastructure definitions (ECS, RDS, ALB). |
 
 ## Development Setup
 
-### Local with Docker Compose
-
-```bash
-cp example.env .env
-# Edit .env and set OPENAI_API_KEY
-
-docker compose up -d --build
-```
-
-Hot-reload watches `agents/`, `app/`, `db/`. Edits land in <2s. `compose.yaml` sets `RUNTIME_ENV=dev`, `AGNO_DEBUG=True`, and `WAIT_FOR_DB=True` so JWT is off and the API blocks on the DB before serving.
-
 ### Local with Agno CLI
-
-Alternatively, use the agno infra CLI for local development:
 
 ```bash
 cp example.env .env
@@ -60,6 +46,8 @@ cp example.env .env
 
 ag infra up --env dev
 ```
+
+Hot-reload watches `agents/`, `app/`, `db/`. The dev environment sets `RUNTIME_ENV=dev`, `AGNO_DEBUG=True`, and `WAIT_FOR_DB=True` so JWT is off and the API blocks on the DB before serving.
 
 ### Format & Validate
 
@@ -140,7 +128,7 @@ Knowledge bases use PgVector with `SearchType.hybrid` and `text-embedding-3-smal
 Two options:
 
 1. **Hand it to Claude Code** — paste `Run docs/create-new-agent.md` into a Claude Code session pointed at this repo. Claude asks the user what the agent should do, generates the file, registers it, smoke-tests it.
-2. **Do it manually** — create `agents/<slug>.py`, register in `app/main.py`, add prompts to `app/config.yaml`. Then `docker compose restart agentos-api` — uvicorn hot-reload is unreliable for newly-registered modules, so a restart is required for the new agent to load.
+2. **Do it manually** — create `agents/<slug>.py`, register in `app/main.py`, add prompts to `app/config.yaml`. Then `ag infra up --env dev` to restart — uvicorn hot-reload is unreliable for newly-registered modules, so a restart is required for the new agent to load.
 
 ## Iterating on an agent
 
@@ -172,7 +160,7 @@ Run [`docs/review-and-improve.md`](docs/review-and-improve.md). A recurring swee
 | `PARALLEL_API_KEY` | no | — | Authenticates the WebSearch Agent's Parallel SDK / MCP connection (raises rate ceiling). |
 | `SLACK_BOT_TOKEN` | no | — | Bot token. Set with signing secret to enable Slack interface. |
 | `SLACK_SIGNING_SECRET` | no | — | Signing secret. Both must be set for the interface to load. |
-| `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASS` / `DB_DATABASE` | no | matches compose | Postgres connection. |
+| `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASS` / `DB_DATABASE` | no | see infra/dev_resources.py | Postgres connection. |
 | `DB_DRIVER` | no | `postgresql+psycopg` | SQLAlchemy driver. |
 | `AGNO_DEBUG` | no | `False` | If `True`, agno emits verbose debug logs. Compose sets this for dev. |
 | `WAIT_FOR_DB` | no | `False` | If `True`, the entrypoint blocks on the DB before starting. Compose sets this. |
@@ -231,7 +219,7 @@ ECS task role automatically handles AWS service auth (Bedrock, etc.) — no need
 # Add a dependency
 # 1. Edit pyproject.toml
 ./scripts/generate_requirements.sh upgrade
-docker compose up -d --build
+ag infra up --env dev
 
 # Redeploy to AWS after code changes
 ag infra up --env prd
