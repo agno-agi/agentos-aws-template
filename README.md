@@ -108,7 +108,8 @@ ag infra down --env prd      # Tear down all resources
 ├── infra/                   # AWS infrastructure config
 │   ├── settings.py          # Region, subnets, image settings
 │   ├── dev_resources.py     # Docker resources (local via ag CLI)
-│   └── prd_resources.py     # AWS resources (ECS, RDS, ALB)
+│   ├── prd_resources.py     # AWS resources (ECS, RDS, ALB)
+│   └── example_secrets/     # Template secret files for deployment
 ├── scripts/                 # Helper scripts
 ├── compose.yaml             # Docker Compose for local development
 ├── Dockerfile
