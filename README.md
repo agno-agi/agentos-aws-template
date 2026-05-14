@@ -63,7 +63,7 @@ ag infra down --env dev
 - [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) installed and configured
 - Docker installed (for building images)
 
-### Configure secrets
+### 1. Configure secrets
 
 ```sh
 # Copy the example secrets
@@ -73,15 +73,66 @@ cp infra/example_secrets/prd_api_secrets.yml infra/secrets/prd_api_secrets.yml
 # OPENAI_API_KEY is required
 ```
 
-### Deploy
+### 2. Deploy
 
 ```sh
 ag infra up --env prd
 ```
 
-The first deploy will fail intentionally — JWT auth is on by default and `JWT_VERIFICATION_KEY` isn't set yet. Get the key from os.agno.com (Add OS → Live → Token Based Authorization), add it to your secrets file, and redeploy.
+### 3. Your first deploy will fail by design
 
-See the [full AWS deployment guide](https://docs.agno.com/production/templates/aws) for configuring subnets, HTTPS, and connecting to the control plane.
+Token-Based Authorization is on by default. Without `JWT_VERIFICATION_KEY`, the app refuses to serve traffic. The platform's job is to keep your data off the public web, so the safe default is "refuse to start" with an authentication token.
+
+Token-Based Auth gives you three things:
+
+1. **No public access.** The server rejects requests without a valid token.
+2. **Per-request identity.** Middleware parses the token and injects `user_id`, `session_id`, and custom claims into your endpoints. Each request is tied to a user and session.
+3. **Granular permissions.** User tokens can run an agent and view their own sessions. Admin tokens read everyone's sessions and test any agent.
+
+### 4. Get your verification key
+
+> **Heads up.** Live connections at os.agno.com are a paid feature. Use coupon code `PLATFORM30` for a one-month free trial. Cancel before the trial ends if you don't want to be charged.
+
+1. Open [os.agno.com](https://os.agno.com), click **Add OS** → **Live**, enter your ALB domain, and connect.
+2. Enable **Token Based Authorization**.
+3. Add the public key to `infra/secrets/prd_api_secrets.yml` (full PEM block):
+
+```yaml
+JWT_VERIFICATION_KEY: |
+  -----BEGIN PUBLIC KEY-----
+  MIIBIjANBgkq...
+  -----END PUBLIC KEY-----
+```
+
+### 5. Set scheduler URL and redeploy
+
+While editing secrets, point the scheduler at your public ALB domain so cron triggers can reach AgentOS:
+
+```yaml
+AGENTOS_URL: https://<your-alb-domain>.amazonaws.com
+```
+
+Then redeploy:
+
+```sh
+ag infra up --env prd
+```
+
+Watch the logs and confirm the platform is serving:
+
+```sh
+ag infra logs --env prd
+```
+
+Once you see successful requests, AgentOS will connect through your ALB domain and you're live.
+
+### Opting out of JWT (not recommended)
+
+Set `authorization=False` in [`app/main.py`](app/main.py) and redeploy. Use this only inside a private VPC behind another auth layer. Without it, anyone who guesses your ALB domain can read your sessions and run your agents.
+
+### Scaling
+
+Edit `infra/prd_resources.py` to adjust `cpu`, `memory`, and `desired_count`. Redeploy with `ag infra up --env prd`. For production, consider 2+ tasks for fault tolerance and zero-downtime rolling deploys.
 
 ### Manage deployment
 
@@ -89,6 +140,8 @@ See the [full AWS deployment guide](https://docs.agno.com/production/templates/a
 ag infra patch --env prd     # Update after changes
 ag infra down --env prd      # Tear down all resources
 ```
+
+See the [full AWS deployment guide](https://docs.agno.com/production/templates/aws) for configuring subnets, HTTPS, and connecting to the control plane.
 
 ## Project Structure
 
@@ -115,6 +168,73 @@ ag infra down --env prd      # Tear down all resources
 ├── example.env
 └── pyproject.toml           # Dependencies
 ```
+
+## Extending the Platform
+
+### Multi-agent teams and workflows
+
+For most things one agent is enough. When it isn't:
+
+- **[Multi-agent teams](https://docs.agno.com/teams/overview).** Coordinate (a leader plans and synthesizes), route (a router picks the right specialist), or broadcast (run everyone in parallel). Use when the right specialist isn't known up front.
+- **[Agentic workflows](https://docs.agno.com/workflows/overview).** Deterministic step-by-step pipelines. Use when a process needs to run the same way every time.
+
+Rule of thumb: agents for open questions, teams for routing, workflows for processes.
+
+### Scheduled tasks
+
+`scheduler=True` is on in [`app/main.py`](app/main.py). Schedule any agent or workflow on a cron:
+
+- **Maintenance.** Purge sessions older than 90 days. Vacuum tables.
+- **Proactive runs.** Every weekday morning, summarize overnight news for your portfolio and send to Slack.
+- **Periodic re-evaluation.** Wrap the eval suite as a scheduled workflow to catch behavior drift before users do.
+
+See [Agno scheduler docs](https://docs.agno.com/agent-os/scheduler) for the cron API.
+
+### Interfaces
+
+Agents should live where your users are. Slack, Discord, Telegram, custom UIs in your product.
+
+**Slack** is pre-wired. Set `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET` in your secrets and the interface lights up automatically. See [`app/main.py`](app/main.py):
+
+```python
+interfaces: list = []
+if SLACK_BOT_TOKEN and SLACK_SIGNING_SECRET:
+    from agno.os.interfaces.slack import Slack
+
+    interfaces.append(
+        Slack(
+            agent=code_search,
+            streaming=True,
+            token=SLACK_BOT_TOKEN,
+            signing_secret=SLACK_SIGNING_SECRET,
+            resolve_user_identity=True,
+        )
+    )
+```
+
+Swap the `agent=` arg to route Slack to a different agent. For the Slack-side app setup, see the [Agno Slack interface docs](https://docs.agno.com/agent-os/interfaces/overview).
+
+For Discord, Telegram, WhatsApp, or a custom UI, mirror the same conditional with the relevant interface from Agno. See the [Agno interfaces guide](https://docs.agno.com/agent-os/interfaces/overview).
+
+### Tools and MCP servers
+
+The WebSearch agent in [`agents/web_search.py`](agents/web_search.py) shows the MCPTools pattern (URL plus transport). Copy it to wire any MCP server.
+
+For built-in toolkits, Agno ships 100+. A typical wire-up is three lines:
+
+```python
+from agno.tools.linear import LinearTools
+
+linear_agent = Agent(
+    id="linear",
+    model=default_model(),
+    tools=[LinearTools()],
+    instructions="You triage issues in Linear.",
+    db=get_postgres_db(),
+)
+```
+
+See [Agno tools](https://docs.agno.com/tools/toolkits) for the full catalog.
 
 ## Common Tasks
 
