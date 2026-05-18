@@ -1,15 +1,33 @@
 # AgentOS AWS Template
 
-Deploy a multi-agent system on AWS with ECS Fargate, RDS PostgreSQL, and an application load balancer.
+An agent platform you build, improve, and run using coding agents. Deploy to AWS with ECS Fargate, RDS PostgreSQL, and an application load balancer.
+
+The platform runs in your cloud, behind your auth, with all your data stored in your database. Because trace data, agent code, system logs, and the iteration tool all live in one place, coding agents like Claude Code can read, update, and improve the platform end-to-end.
+
+## Built for coding agents
+
+This codebase is designed primarily for coding agents. It comes with five prompts that cover the full agent development lifecycle:
+
+1. **Create.** Claude asks a few questions, scaffolds the agent file, registers it in `app/main.py`, adds quick prompts to `app/config.yaml`, restarts the container, and smoke-tests via cURL. Usually 5-10 minutes for a simple agent.
+2. **Improve.** Hardens and fine-tunes your agent based on its existing spec. Claude derives probes from the agent's `INSTRUCTIONS`, runs them against the live container, judges the responses, and edits until they pass. No input from you.
+3. **Extend.** Add a new feature to an agent. You direct, Claude executes. Add tools, refine prompts, fix bugs. The Agno docs MCP is loaded so toolkit research is grounded in the real API.
+4. **Hill Climb.** Claude runs the eval suite, diagnoses failures, and fixes what's in scope. Stops when all cases pass.
+5. **Review.** Claude sweeps the repo for drift between docs, code, and config. Auto-fixes mechanical drift like stale paths and missing env vars; flags anything bigger.
+
+3 of 5 run autonomously with no input needed from you.
 
 ## What's Included
 
 | Agent | Pattern | Description |
 |-------|---------|-------------|
-| Knowledge Agent | Agentic RAG | Answers questions from a knowledge base. |
-| MCP Agent | MCP Tool Use | Connects to external services via MCP. |
+| WebSearch | Direct tools | Search the web using Parallel SDK or keyless MCP. |
+| CodeSearch | Context provider | Answer questions about this codebase. |
 
 ## Get Started
+
+### Step 1: Run locally
+
+> **Prerequisite:** [Docker](https://www.docker.com/get-started/) installed and running.
 
 ```sh
 # Clone the repo
@@ -22,20 +40,17 @@ cp example.env .env
 
 # Start the application
 ag infra up --env dev
-
-# Load documents for the knowledge agent
-docker exec -it agentos-aws-template-api python -m agents.knowledge_agent
 ```
 
 Confirm AgentOS is running at [http://localhost:8000/docs](http://localhost:8000/docs).
 
-### Connect to the Web UI
+### Step 2: Connect to the Web UI
 
 1. Open [os.agno.com](https://os.agno.com) and login
 2. Add OS → Local → `http://localhost:8000`
 3. Click "Connect"
 
-### Stop the application
+### Step 3: Stop the application
 
 ```sh
 ag infra down --env dev
@@ -43,15 +58,81 @@ ag infra down --env dev
 
 ## Deploy to AWS
 
-Requires:
+### Prerequisites
+
 - [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) installed and configured
-- `OPENAI_API_KEY` set in your environment
+- Docker installed (for building images)
+
+### 1. Configure secrets
+
+```sh
+# Copy the example secrets
+cp infra/example_secrets/prd_api_secrets.yml infra/secrets/prd_api_secrets.yml
+
+# Edit and add your API keys
+# OPENAI_API_KEY is required
+```
+
+### 2. Deploy
 
 ```sh
 ag infra up --env prd
 ```
 
-See the [full AWS deployment guide](https://docs.agno.com/production/templates/aws) for configuring subnets, HTTPS, and connecting to the control plane.
+### 3. Your first deploy will fail by design
+
+Token-Based Authorization is on by default. Without `JWT_VERIFICATION_KEY`, the app refuses to serve traffic. The platform's job is to keep your data off the public web, so the safe default is "refuse to start" with an authentication token.
+
+Token-Based Auth gives you three things:
+
+1. **No public access.** The server rejects requests without a valid token.
+2. **Per-request identity.** Middleware parses the token and injects `user_id`, `session_id`, and custom claims into your endpoints. Each request is tied to a user and session.
+3. **Granular permissions.** User tokens can run an agent and view their own sessions. Admin tokens read everyone's sessions and test any agent.
+
+### 4. Get your verification key
+
+> **Heads up.** Live connections at os.agno.com are a paid feature. Use coupon code `PLATFORM30` for a one-month free trial. Cancel before the trial ends if you don't want to be charged.
+
+1. Open [os.agno.com](https://os.agno.com), click **Add OS** → **Live**, enter your ALB domain, and connect.
+2. Enable **Token Based Authorization**.
+3. Add the public key to `infra/secrets/prd_api_secrets.yml` (full PEM block):
+
+```yaml
+JWT_VERIFICATION_KEY: |
+  -----BEGIN PUBLIC KEY-----
+  MIIBIjANBgkq...
+  -----END PUBLIC KEY-----
+```
+
+### 5. Set scheduler URL and redeploy
+
+While editing secrets, point the scheduler at your public ALB domain so cron triggers can reach AgentOS:
+
+```yaml
+AGENTOS_URL: https://<your-alb-domain>.amazonaws.com
+```
+
+Then redeploy:
+
+```sh
+ag infra up --env prd
+```
+
+Watch the logs and confirm the platform is serving:
+
+```sh
+ag infra logs --env prd
+```
+
+Once you see successful requests, AgentOS will connect through your ALB domain and you're live.
+
+### Opting out of JWT (not recommended)
+
+Set `authorization=False` in [`app/main.py`](app/main.py) and redeploy. Use this only inside a private VPC behind another auth layer. Without it, anyone who guesses your ALB domain can read your sessions and run your agents.
+
+### Scaling
+
+Edit `infra/prd_resources.py` to adjust `cpu`, `memory`, and `desired_count`. Redeploy with `ag infra up --env prd`. For production, consider 2+ tasks for fault tolerance and zero-downtime rolling deploys.
 
 ### Manage deployment
 
@@ -60,103 +141,130 @@ ag infra patch --env prd     # Update after changes
 ag infra down --env prd      # Tear down all resources
 ```
 
-## The Agents
-
-### Knowledge Agent
-
-Answers questions using hybrid search over a vector database (Agentic RAG).
-
-**Load documents:**
-
-```sh
-# Local
-docker exec -it agentos-aws-template-api python -m agents.knowledge_agent
-
-# AWS
-ECS_CLUSTER=agentos-aws-template-prd
-TASK_ARN=$(aws ecs list-tasks --cluster $ECS_CLUSTER --query "taskArns[0]" --output text)
-
-aws ecs execute-command --cluster $ECS_CLUSTER \
-    --task $TASK_ARN \
-    --container agentos-aws-template \
-    --interactive \
-    --command "python -m agents.knowledge_agent"
-```
-
-**Try it:**
-
-```
-What is Agno?
-How do I create my first agent?
-What documents are in your knowledge base?
-```
-
-### MCP Agent
-
-Connects to external tools via the Model Context Protocol.
-
-**Try it:**
-
-```
-What tools do you have access to?
-Search the docs for how to use LearningMachine
-Find examples of agents with memory
-```
+See the [full AWS deployment guide](https://docs.agno.com/production/templates/aws) for configuring subnets, HTTPS, and connecting to the control plane.
 
 ## Project Structure
+
 ```
 ├── agents/                  # Agents
-│   ├── knowledge_agent.py   # Agentic RAG
-│   └── mcp_agent.py         # MCP Tool Use
+│   ├── web_search.py        # WebSearch — Parallel SDK or keyless MCP
+│   └── code_search.py       # CodeSearch — WorkspaceContextProvider
 ├── app/
 │   ├── main.py              # AgentOS entry point
+│   ├── settings.py          # default_model() factory
 │   └── config.yaml          # Quick prompts config
 ├── db/
 │   ├── session.py           # PostgreSQL database helpers
 │   └── url.py               # Connection URL builder
+├── docs/                    # Claude Code workflow prompts
+├── evals/                   # Agent evaluation suite
 ├── infra/                   # AWS infrastructure config
 │   ├── settings.py          # Region, subnets, image settings
-│   ├── dev_resources.py     # Docker resources (local)
-│   └── prd_resources.py     # AWS resources (ECS, RDS, ALB)
+│   ├── dev_resources.py     # Docker resources (local via ag CLI)
+│   ├── prd_resources.py     # AWS resources (ECS, RDS, ALB)
+│   └── example_secrets/     # Template secret files for deployment
 ├── scripts/                 # Helper scripts
 ├── Dockerfile
 ├── example.env
 └── pyproject.toml           # Dependencies
 ```
 
+## Extending the Platform
+
+### Multi-agent teams and workflows
+
+For most things one agent is enough. When it isn't:
+
+- **[Multi-agent teams](https://docs.agno.com/teams/overview).** Coordinate (a leader plans and synthesizes), route (a router picks the right specialist), or broadcast (run everyone in parallel). Use when the right specialist isn't known up front.
+- **[Agentic workflows](https://docs.agno.com/workflows/overview).** Deterministic step-by-step pipelines. Use when a process needs to run the same way every time.
+
+Rule of thumb: agents for open questions, teams for routing, workflows for processes.
+
+### Scheduled tasks
+
+`scheduler=True` is on in [`app/main.py`](app/main.py). Schedule any agent or workflow on a cron:
+
+- **Maintenance.** Purge sessions older than 90 days. Vacuum tables.
+- **Proactive runs.** Every weekday morning, summarize overnight news for your portfolio and send to Slack.
+- **Periodic re-evaluation.** Wrap the eval suite as a scheduled workflow to catch behavior drift before users do.
+
+See [Agno scheduler docs](https://docs.agno.com/agent-os/scheduler) for the cron API.
+
+### Interfaces
+
+Agents should live where your users are. Slack, Discord, Telegram, custom UIs in your product.
+
+**Slack** is pre-wired. Set `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET` in your secrets and the interface lights up automatically. See [`app/main.py`](app/main.py):
+
+```python
+interfaces: list = []
+if SLACK_BOT_TOKEN and SLACK_SIGNING_SECRET:
+    from agno.os.interfaces.slack import Slack
+
+    interfaces.append(
+        Slack(
+            agent=code_search,
+            streaming=True,
+            token=SLACK_BOT_TOKEN,
+            signing_secret=SLACK_SIGNING_SECRET,
+            resolve_user_identity=True,
+        )
+    )
+```
+
+Swap the `agent=` arg to route Slack to a different agent. For the Slack-side app setup, see the [Agno Slack docs](https://docs.agno.com/agent-os/interfaces/slack/introduction).
+
+For Discord, Telegram, WhatsApp, or a custom UI, mirror the same conditional with the relevant interface from Agno. See the [Agno interfaces guide](https://docs.agno.com/agent-os/interfaces/overview).
+
+### Tools and MCP servers
+
+The WebSearch agent in [`agents/web_search.py`](agents/web_search.py) shows the MCPTools pattern (URL plus transport). Copy it to wire any MCP server.
+
+For built-in toolkits, Agno ships 100+. A typical wire-up is three lines:
+
+```python
+from agno.tools.linear import LinearTools
+
+linear_agent = Agent(
+    id="linear",
+    model=default_model(),
+    tools=[LinearTools()],
+    instructions="You triage issues in Linear.",
+    db=get_postgres_db(),
+)
+```
+
+See [Agno tools](https://docs.agno.com/tools/toolkits) for the full catalog.
+
 ## Common Tasks
 
 ### Add your own agent
 
-1. Create `agents/my_agent.py`:
+1. **Hand it to Claude Code** — paste `Run docs/create-new-agent.md` into a Claude Code session. Claude asks what the agent should do, generates the file, registers it, smoke-tests it.
+
+2. **Do it manually** — create `agents/my_agent.py`:
 
 ```python
 from agno.agent import Agent
-from agno.models.openai import OpenAIResponses
+
+from app.settings import default_model
 from db import get_postgres_db
 
 my_agent = Agent(
     id="my-agent",
     name="My Agent",
-    model=OpenAIResponses(id="gpt-5.2"),
+    model=default_model(),
     db=get_postgres_db(),
     instructions="You are a helpful assistant.",
+    enable_agentic_memory=True,
+    add_datetime_to_context=True,
+    add_history_to_context=True,
+    num_history_runs=5,
+    markdown=True,
 )
 ```
 
-2. Register in `app/main.py`:
-
-```python
-from agents.my_agent import my_agent
-
-agent_os = AgentOS(
-    name="AgentOS",
-    agents=[knowledge_agent, mcp_agent, my_agent],
-    ...
-)
-```
-
-3. Restart: `ag infra up --env dev`
+Register in `app/main.py` and restart: `ag infra up --env dev`
 
 ### Add tools to an agent
 
@@ -177,48 +285,44 @@ my_agent = Agent(
 
 ### Add dependencies
 
-1. Edit `pyproject.toml`
-2. Regenerate requirements: `./scripts/generate_requirements.sh`
-3. Rebuild: `ag infra up --env dev`
+```sh
+# 1. Edit pyproject.toml
+# 2. Regenerate requirements
+./scripts/generate_requirements.sh upgrade
+# 3. Rebuild
+ag infra up --env dev
+```
 
 ### Use a different model provider
 
 1. Add your API key to `.env` (e.g., `ANTHROPIC_API_KEY`)
-2. Update agents to use the new provider:
+2. Update `app/settings.py`:
 
 ```python
 from agno.models.anthropic import Claude
 
-model=Claude(id="claude-sonnet-4-5")
+def default_model():
+    return Claude(id="claude-sonnet-4-5")
 ```
-3. Add dependency: `anthropic` in `pyproject.toml`
 
----
-
-## Local Development
-
-For development without Docker:
-
-```sh
-# Install uv
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Setup environment
-./scripts/venv_setup.sh
-source .venv/bin/activate
-```
+3. Add dependency to `pyproject.toml`
 
 ## Environment Variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `OPENAI_API_KEY` | Yes | - | OpenAI API key |
+| `RUNTIME_ENV` | No | `prd` | `dev` enables hot-reload and disables JWT |
+| `JWT_VERIFICATION_KEY` | Prd | - | Public key from os.agno.com |
+| `AGENTOS_URL` | No | `http://127.0.0.1:8000` | Scheduler base URL |
+| `PARALLEL_API_KEY` | No | - | Parallel SDK key (optional for WebSearch) |
+| `SLACK_BOT_TOKEN` | No | - | Enable Slack interface |
+| `SLACK_SIGNING_SECRET` | No | - | Enable Slack interface |
 | `DB_HOST` | No | `localhost` | Database host |
 | `DB_PORT` | No | `5432` | Database port |
 | `DB_USER` | No | `ai` | Database user |
 | `DB_PASS` | No | `ai` | Database password |
 | `DB_DATABASE` | No | `ai` | Database name |
-| `RUNTIME_ENV` | No | `prd` | Set to `dev` for auto-reload |
 
 ## Learn More
 
