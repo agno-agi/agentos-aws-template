@@ -17,7 +17,14 @@ docs
 
 # Ignore .env files
 .env
+.env*
 .envrc
+
+# Ignore secrets and generated infra output
+infra/secrets/
+infra/output/
+infra/*-prd-api/
+.data/
 
 # ignore virtualenvs
 .venv
