@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> **This template has been superseded — it now lives at [agno-agi/agentos-aws](https://github.com/agno-agi/agentos-aws)**, part of the AgentOS starter family on the agno 2.7 line. This repository is archived and no longer maintained.
+
 # AgentOS AWS Template
 
 An agent platform you build, improve, and run using coding agents. Deploy to AWS with ECS Fargate, RDS PostgreSQL, and an application load balancer.
