@@ -8,4 +8,4 @@ output
 secrets
 
 # ignore generated YAML files
-agentos-aws-template-prd-api
+*-prd-api
